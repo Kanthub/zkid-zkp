@@ -1,42 +1,48 @@
 // circuits/age_ge/circuit.go
-// 设计电路：比如在不暴露年龄的前提下，证明年龄 >= 18
+// Circuit design: for example, proving "age ≥ 18" without revealing the actual age
 package circuits
 
 import (
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/hash/poseidon2"
+	mimc "github.com/consensys/gnark/std/hash/mimc"
 )
 
-// 更通用的电路定义，让 zkID 支持多种属性验证
+// More general circuit definition, allowing zkID to support multiple attribute validations
 type Circuit struct {
 
-	// 公开输入（顺序很重要！因为 gnark 按照声明顺序处理公开输入）
+	// Public inputs (ordering is important! gnark processes public inputs in the declared order)
 	PolicyID  frontend.Variable `gnark:",public"`
 	Version   frontend.Variable `gnark:",public"`
-	C         frontend.Variable `gnark:",public"` // 属性的承诺值
+	C         frontend.Variable `gnark:",public"` // Commitment of the attribute
 	Threshold frontend.Variable `gnark:",public"`
 
-	// 私有输入(顺序可随意)
-	Name       frontend.Variable // 用户名
-	Age        frontend.Variable // 用户年龄
-	Nation     frontend.Variable // 国籍
-	Address    frontend.Variable // 地址
-	IdentityID frontend.Variable // 身份证号
-	AttrValue  frontend.Variable // 属性值（比如用户面部 / 指纹）
+	// Private inputs (order is flexible)
+	Name       frontend.Variable // User name
+	Age        frontend.Variable // User age
+	Nation     frontend.Variable // Nationality
+	Address    frontend.Variable // Address
+	IdentityID frontend.Variable // Identity number
+	AttrValue  frontend.Variable // Attribute value (e.g., face/fingerprint biometric)
 	DID        frontend.Variable
 }
 
-// Define 定义电路约束
+// Define defines the circuit constraints
+
+// The API is not a runtime executor. It encodes all arithmetic operations and
+// comparisons into algebraic constraints, which form the zk circuit and can be
+// proven in zero-knowledge.
+
 func (c *Circuit) Define(api frontend.API) error {
 	// -------------------------------------------------
-	// 1. Poseidon 哈希：h = Poseidon(policy_id, version, did, m, r)
+	// 1. Poseidon hash: h = Poseidon(policy_id, version, did, m, r)
 	// -------------------------------------------------
-	hasher, err := poseidon2.NewMerkleDamgardHasher(api)
+	// hasher, err := poseidon2.NewMerkleDamgardHasher(api)
+	hasher, err := mimc.NewMiMC(api)
 	if err != nil {
 		return err
 	}
 
-	// 写入要哈希的字段
+	// Write fields to hash
 	hasher.Write(
 		c.PolicyID,
 		c.Version,
@@ -48,19 +54,20 @@ func (c *Circuit) Define(api frontend.API) error {
 		c.AttrValue,
 		c.DID,
 	)
-	// 求和（得到 field 元素）
+
+	// Compute the hash output (as a field element)
 	h := hasher.Sum()
 
 	api.Println("Poseidon hash result:", h)
 
-	api.AssertIsEqual(h, c.C) // 断言哈希结果与公开承诺值一致
+	api.AssertIsEqual(h, c.C) // Assert the hash result matches the public commitment
 
 	// -------------------------------------------------
-	// 2. HashToCurve 占位逻辑
+	// 2. HashToCurve placeholder logic (for future use)
 	// -------------------------------------------------
 
 	// -------------------------------------------------
-	// 3. 年龄 >= 阈值 约束
+	// 3. Age ≥ threshold constraint
 	// -------------------------------------------------
 	api.AssertIsLessOrEqual(c.Threshold, c.AttrValue)
 

@@ -1,5 +1,5 @@
-// 模拟用户链上验证过程：用户提供 1. 公共输入 和 2. proof
-// 链上合约使用 hardcode 的 vk 进行验证
+// Simulate the user's on-chain verification process: the user provides (1) public inputs and (2) the proof
+// The on-chain contract verifies using a hardcoded vk
 package verify_age
 
 import (
@@ -39,9 +39,9 @@ func VerifyProof(
 	// if err != nil {
 	// 	log.Fatalf("Setup failed: %v", err)
 	// }
-	// 不可以重新Setup生成 vk，因为会不一样
+	// Do NOT re-run Setup to regenerate vk, because it will be different
 
-	// 2) Recompute witness (same as proving）
+	// 2) Recompute witness (same as proving)
 	assignment, err := NewAssignmentCircuit(
 		policyID, version, threshold,
 		name, nation, address,
@@ -60,7 +60,7 @@ func VerifyProof(
 		log.Fatalf("make witness failed: %v", err)
 	}
 
-	// 4) Load proof
+	// 3) Load proof
 	fproof, err := os.Open("proof_age.bin")
 	if err != nil {
 		log.Fatalf("proof open failed: %v", err)
@@ -72,19 +72,19 @@ func VerifyProof(
 		log.Fatalf("proof parse failed: %v", err)
 	}
 
-	// 5) Extract public witness
+	// 4) Extract public witness
 	publicWitness, err := witness.Public()
 	if err != nil {
 		log.Fatalf("public input failed: %v", err)
 	}
-	// 这里 publicWitness 的顺序必须和电路中定义的 public inputs 顺序一致
+	// The order of publicWitness must match the order of public inputs defined in the circuit
 	fmt.Println("Public inputs for verification:")
 	vec := publicWitness.Vector().(fr.Vector)
 	for i, v := range vec {
-		fmt.Printf("  Public input %d: %s\n", i, v.String())
+		fmt.Printf("Public input %d: %s\n", i, v.String())
 	}
 
-	// 6) Run Groth16 verification
+	// 5) Run Groth16 verification
 	if err := groth16.Verify(proof, vk, publicWitness); err != nil {
 		log.Fatalf("Verification FAILED: %v", err)
 	}

@@ -33,7 +33,7 @@ func GenerateKeys() (groth16.ProvingKey, groth16.VerifyingKey) {
 	log.Println("Setup completed")
 
 	// ----------------------------------------------------------------------
-	// 1) 保存 ProvingKey（这是允许的）
+	// 1) Save the ProvingKey (this is allowed)
 	// ----------------------------------------------------------------------
 	pkFile, err := os.Create("age_pk.bin")
 	if err != nil {
@@ -47,24 +47,25 @@ func GenerateKeys() (groth16.ProvingKey, groth16.VerifyingKey) {
 	log.Println("Successfully saved age_pk.bin")
 
 	// ----------------------------------------------------------------------
-	// 2) 不能再序列化 VerifyingKey！
-	//    官方已经移除 VK 的 WriteTo / ReadFrom / enc 能力
-	//    VerifyingKey 必须直接用于生成 Solidity Verifier
+	// 2) Cannot serialize the VerifyingKey anymore!
+	//    The official library has removed VK's WriteTo / ReadFrom / encoding capability
+	//    The VerifyingKey must be used directly to generate the Solidity verifier
 	// ----------------------------------------------------------------------
-	// log.Println("⚠ Skipped saving age_vk.bin (unsupported by modern gnark)")
-	vkFile, err := os.Create("age_vk.bin")
-	if err != nil {
-		log.Fatalf("Failed to create vk file: %v", err)
-	}
-	defer vkFile.Close()
 
-	if _, err := vk.WriteTo(vkFile); err != nil {
-		log.Fatalf("Failed to write vk file: %v", err)
-	}
-	log.Println("Successfully saved age_vk.bin")
+	// vkFile, err := os.Create("age_vk.bin")
+	// if err != nil {
+	// 	log.Fatalf("Failed to create vk file: %v", err)
+	// }
+	// defer vkFile.Close()
+
+	// if _, err := vk.WriteTo(vkFile); err != nil {
+	// 	log.Fatalf("Failed to write vk file: %v", err)
+	// }
+	// log.Println("Successfully saved age_vk.bin")
+	log.Println("⚠ Skipped saving age_vk.bin (unsupported by modern gnark)")
 
 	// ----------------------------------------------------------------------
-	// 3) 直接导出 Solidity Verifier 合约
+	// 3) Export the Solidity verifier contract directly
 	// ----------------------------------------------------------------------
 	verifierFile, err := os.Create("AgeVerifier.sol")
 	if err != nil {

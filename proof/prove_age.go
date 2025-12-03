@@ -9,6 +9,7 @@
 package proof_age
 
 import (
+	"fmt"
 	"log"
 	"math/big"
 	"os"
@@ -16,6 +17,8 @@ import (
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/consensys/gnark/backend/groth16"
+	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
+	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"golang.org/x/crypto/sha3"
@@ -201,9 +204,9 @@ func ComputeCommitment(
 	// 输出也是一个 F_r 元素（字段内的 hash 值）
 	var out fr.Element
 
-	sumBig := new(big.Int).SetBytes(sum)
-	sumBig.Mod(sumBig, fr.Modulus()) // reduce into field
-	out.SetBigInt(sumBig)
+	sumBigInt := new(big.Int).SetBytes(sum)
+	sumBigInt.Mod(sumBigInt, fr.Modulus()) // reduce into field
+	out.SetBigInt(sumBigInt)
 
 	C := out.BigInt(new(big.Int))
 	log.Printf("Locally computed Commitment C (decimal): %s\n", C.String())
@@ -216,7 +219,7 @@ func GenerateProof(
 	age, identityID int64,
 	attrValue []byte, // fingerprint features (bytes)
 	did, C *big.Int,
-) {
+) ([]*big.Int, []string, error) {
 	log.Println("Generating proof...")
 
 	// 1. Compile the circuit
@@ -224,7 +227,7 @@ func GenerateProof(
 	field := fr.Modulus()                                         // Returns the modulus (*big.Int), field of the curve
 	cs, err := frontend.Compile(field, r1cs.NewBuilder, &circuit) // Build the ConstraintSystem
 	if err != nil {
-		log.Fatalf("Circuit compilation failed: %v", err)
+		return nil, nil, fmt.Errorf("circuit compilation failed: %w", err)
 	}
 
 	// 2. Construct witness (private input + public input)
@@ -235,40 +238,95 @@ func GenerateProof(
 		attrValue, did, C,
 	)
 	if err != nil {
-		log.Fatalf("Failed to construct assignment: %v", err)
+		return nil, nil, fmt.Errorf("failed to build assignment: %w", err)
 	}
 	witness, err := frontend.NewWitness(assignment, field)
 	if err != nil {
-		log.Fatalf("Failed to construct witness: %v", err)
+		return nil, nil, fmt.Errorf("failed to construct witness: %w", err)
 	}
 
 	// 3. Load pk
 	fpk, err := os.Open("./age_pk.bin")
 	if err != nil {
-		log.Fatalf("Failed to open pk file: %v", err)
+		return nil, nil, fmt.Errorf("failed to open pk file: %w", err)
 	}
 	defer fpk.Close()
 
 	// var pk groth16.ProvingKey
 	pk := groth16.NewProvingKey(ecc.BN254)
 	if _, err := pk.ReadFrom(fpk); err != nil {
-		log.Fatalf("Failed to read pk: %v", err)
+		return nil, nil, fmt.Errorf("failed to read pk: %w", err)
 	}
 
 	// 4. Generate proof
-	proof, err := groth16.Prove(cs, pk, witness)
+	pIface, err := groth16.Prove(cs, pk, witness)
 	if err != nil {
-		log.Fatalf("Failed to generate proof: %v", err)
+		return nil, nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
+
+	pStruct, ok := pIface.(*groth16_bn254.Proof)
+	if !ok {
+		return nil, nil, fmt.Errorf("failed to cast proof to bn254.Proof")
+	}
+	ExportProofForSol(*pStruct)
 
 	file, err := os.Create("proof_age.bin")
 	if err != nil {
-		log.Fatalf("Failed to create proof file: %v", err)
+		return nil, nil, fmt.Errorf("failed to create proof file: %w", err)
 	}
 	defer file.Close()
 
-	if _, err := proof.WriteTo(file); err != nil {
-		log.Fatalf("Failed to write proof: %v", err)
+	if _, err := pIface.WriteTo(file); err != nil {
+		return nil, nil, fmt.Errorf("failed to write proof: %w", err)
 	}
 	log.Println("Successfully generated proof_age.bin")
+
+	// 5. Prepare public inputs for user's verification
+	publicInputs := []*big.Int{
+		big.NewInt(policyID),
+		big.NewInt(version),
+		C,
+		big.NewInt(threshold),
+	}
+	pubInputsStr := ExportPublicInputs(witness)
+	return publicInputs, pubInputsStr, nil
+}
+
+func ExportProofForSol(proof groth16_bn254.Proof) {
+	// A point
+	a := [2]string{
+		proof.Ar.X.String(),
+		proof.Ar.Y.String(),
+	}
+
+	// B point (G2)
+	b := [2][2]string{
+		{proof.Bs.X.A0.String(), proof.Bs.X.A1.String()},
+		{proof.Bs.Y.A0.String(), proof.Bs.Y.A1.String()},
+	}
+
+	// C point
+	c := [2]string{
+		proof.Krs.X.String(),
+		proof.Krs.Y.String(),
+	}
+
+	log.Println("======ExportProofForSolidity: =======")
+	fmt.Println("a:", a)
+	fmt.Println("b:", b)
+	fmt.Println("c:", c)
+}
+
+func ExportPublicInputs(w witness.Witness) []string {
+	public, _ := w.Public()
+
+	elems := public.Vector().(fr.Vector)
+	result := []string{}
+
+	for _, e := range elems {
+		bi := e.BigInt(new(big.Int)) // fr.Element → *big.Int
+		result = append(result, bi.String())
+	}
+
+	return result
 }
